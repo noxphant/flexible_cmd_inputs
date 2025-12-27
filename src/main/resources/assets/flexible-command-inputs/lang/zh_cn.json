@@ -1,4 +1,4 @@
 {
   "category.flexible_cmd_inputs.main": "灵活指令输入",
-  "key.flexible_cmd_inputs.open_window": "打开指令输入窗口"
+  "key.flexible_cmd_inputs.open_cmd_window": "打开FCI独立窗口"
 }

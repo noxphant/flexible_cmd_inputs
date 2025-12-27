@@ -26,9 +26,10 @@ public class LogListener {
                 @Override
                 public void append(LogEvent event) {
                     String log = getLayout().toSerializable(event).toString();
-                    // 日志存入LogStorage（供WebUI展示）
+                    // 核心：日志存入LogStorage（供本地窗口展示）
                     LogStorage.addLog(log);
 
+                    // 保留自定义消费逻辑（可选）
                     if (logConsumer != null) {
                         MinecraftClient.getInstance().execute(() -> logConsumer.accept(log));
                     }

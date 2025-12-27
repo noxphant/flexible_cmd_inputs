@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FCI_WebUI</title>
+    <style>
+        /* 全局样式 & CSS变量 */
+        :root {
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --secondary: #64748b;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --bg-light: #f8fafc;
+            --border: #e2e8f0;
+            --text-dark: #1e293b;
+            --text-light: #64748b;
+            --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            --radius: 6px;
+            --panel-min-width: 200px;
+            --panel-max-width: 800px;
+            --panel-init-width: 300px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            line-height: 1.6;
+            padding: 20px;
+            position: relative;
+            margin-left: var(--panel-init-width); /* 适配左侧面板初始宽度 */
+            min-height: 100vh;
+            transition: margin-left 0.2s ease; /* 宽度调节过渡 */
+        }
+
+        /* 核心优化1：左侧面板支持拖动调节宽度 */
+        .client-status-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: var(--panel-init-width);
+            height: 100vh;
+            background: white;
+            box-shadow: var(--shadow);
+            border-right: 1px solid var(--border);
+            padding: 20px 15px;
+            overflow: hidden; /* 隐藏溢出，避免滚动 */
+            z-index: 100;
+            display: flex;
+            flex-direction: column; /* 弹性布局，适配图表高度 */
+            transition: width 0.2s ease; /* 宽度调节过渡 */
+            min-width: var(--panel-min-width);
+            max-width: var(--panel-max-width);
+        }
+
+        /* 拖动手柄样式 */
+        .panel-resize-handle {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 5px;
+            height: 100vh;
+            background-color: var(--border);
+            cursor: col-resize;
+            z-index: 101;
+            transition: background-color 0.2s ease;
+        }
+
+        .panel-resize-handle:hover {
+            background-color: var(--primary);
+        }
+
+        .status-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0; /* 不收缩，固定高度 */
+        }
+
+        .status-title {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 16px;
+        }
+
+        .status-info {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 25px;
+            flex-shrink: 0; /* 不收缩，固定高度 */
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            background: var(--bg-light);
+            border-radius: var(--radius);
+        }
+
+        .status-label {
+            font-size: 11px;
+            color: var(--text-light);
+            margin-bottom: 5px;
+        }
+
+        .status-value {
+            font-weight: 500;
+            color: var(--text-dark);
+            font-size: 14px;
+        }
+
+        /* 核心优化2：图表容器弹性布局，适配页面高度 */
+        .status-charts {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex: 1; /* 填充剩余高度 */
+            margin-top: 10px;
+            overflow: hidden; /* 隐藏溢出 */
+        }
+
+        .single-chart {
+            background: var(--bg-light);
+            border-radius: var(--radius);
+            padding: 10px;
+            flex: 1; /* 4个图表均分剩余高度 */
+            display: flex;
+            flex-direction: column;
+            min-height: 0; /* 允许收缩，避免溢出 */
+        }
+
+        .chart-title {
+            font-size: 13px;
+            color: var(--text-dark);
+            margin-bottom: 10px;
+            text-align: center;
+            flex-shrink: 0; /* 不收缩，固定高度 */
+        }
+
+        .chart-container {
+            flex: 1; /* 填充图表项剩余高度 */
+            position: relative;
+            min-height: 0;
+        }
+
+        .chart-canvas {
+            width: 100%;
+            height: 100%;
+            display: block; /* 消除canvas默认间距 */
+        }
+
+        /* 右上角当前时间 */
+        .current-time {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: var(--text-dark);
+            font-size: 14px;
+            background: white;
+            padding: 10px 15px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        /* 定时任务批量操作栏 */
+        .batch-operation-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        .batch-select-all {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 13px;
+        }
+
+        .batch-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 13px;
+            transition: background-color 0.2s;
+        }
+
+        .batch-delete-btn {
+            background-color: var(--danger);
+            color: white;
+            margin-left: auto;
+        }
+
+        .batch-delete-btn:hover {
+            background-color: #dc2626;
+        }
+
+        /* 二次点击确认按钮样式 */
+        .btn-confirm-pending {
+            background-color: #b91c1c !important;
+            color: white !important;
+            border: 2px solid #fef2f2 !important;
+        }
+
+        .delete-single-task.confirm-pending {
+            background-color: #b91c1c !important;
+        }
+
+        .batch-delete-btn.confirm-pending {
+            background-color: #b91c1c !important;
+        }
+
+        /* 容器与模块样式 */
+        .container {
+            max-width: 800px;
+            margin: 60px auto;
+            display: grid;
+            gap: 24px;
+        }
+
+        .module {
+            background: white;
+            padding: 20px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        .module h3 {
+            margin-bottom: 16px;
+            color: var(--text-dark);
+            font-size: 18px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+
+        .cmd-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        #cmdInput {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        #cmdInput:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-danger {
+            background-color: var(--danger);
+            color: white;
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+
+        #logArea {
+            height: 200px;
+            overflow-y: auto;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background-color: var(--bg-light);
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        #logArea .log-success {
+            color: var(--success);
+        }
+
+        #logArea .log-fail {
+            color: var(--danger);
+        }
+
+        .timer-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        #timerTime, #timerCmd {
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 14px;
+            flex: 1;
+            min-width: 180px;
+        }
+
+        #timerTime:focus, #timerCmd:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+
+        .timer-list {
+            list-style: none;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .timer-item {
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+            background: white;
+        }
+
+        .timer-item:last-child {
+            border-bottom: none;
+        }
+
+        .timer-item-select {
+            margin-right: 10px;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .timer-info {
+            flex: 1;
+            margin-right: 10px;
+        }
+
+        .timer-countdown {
+            color: var(--primary);
+            font-weight: 500;
+            margin-left: 10px;
+            font-size: 12px;
+        }
+
+        .timer-status {
+            margin-left: 10px;
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .status-pending {
+            background-color: #fef3c7;
+            color: #d97706;
+        }
+
+        .status-executed {
+            background-color: #d1fae5;
+            color: #059669;
+        }
+
+        /* 右下角弹出通知容器 & 通知项样式 */
+        .notification-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 320px;
+        }
+
+        .notification-item {
+            padding: 12px 15px;
+            border-radius: var(--radius);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            color: white;
+            font-size: 13px;
+            line-height: 1.4;
+            transform: translateX(120%);
+            opacity: 0;
+            transition: all 0.3s ease-out;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .notification-item.show {
+            transform: translateX(0);
+            opacity: 1;
+        }
+
+        .notification-item.success {
+            background-color: var(--success);
+        }
+
+        .notification-item.error {
+            background-color: var(--danger);
+        }
+
+        .notification-item.info {
+            background-color: var(--primary);
+        }
+
+        .notification-close {
+            background: transparent;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            margin-left: 10px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-light);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--secondary);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
+        }
+    </style>
+</head>
+<body>
+    <!-- 核心优化：左侧客户端状态面板（添加拖动手柄） -->
+    <div class="client-status-panel" id="clientStatusPanel">
+        <div class="panel-resize-handle" id="panelResizeHandle"></div>
+        <div class="status-header">
+            <span class="status-title">客户端状态监控（近5分钟）</span>
+        </div>
+        <div class="status-info">
+            <div class="status-item">
+                <span class="status-label">FPS（帧率）</span>
+                <span class="status-value" id="fpsValue">0.0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Ping（延迟）</span>
+                <span class="status-value" id="pingValue">0 ms</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">TPS（Tick率）</span>
+                <span class="status-value" id="tpsValue">20.0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">MTPS（最大Tick率）</span>
+                <span class="status-value" id="mtpsValue">20.0</span>
+            </div>
+        </div>
+        <div class="status-charts">
+            <div class="single-chart">
+                <div class="chart-title">FPS 趋势（0-25）</div>
+                <div class="chart-container">
+                    <canvas class="chart-canvas" id="fpsChart"></canvas>
+                </div>
+            </div>
+            <div class="single-chart">
+                <div class="chart-title">Ping 趋势（0-100ms）</div>
+                <div class="chart-container">
+                    <canvas class="chart-canvas" id="pingChart"></canvas>
+                </div>
+            </div>
+            <div class="single-chart">
+                <div class="chart-title">TPS 趋势（0-25）</div>
+                <div class="chart-container">
+                    <canvas class="chart-canvas" id="tpsChart"></canvas>
+                </div>
+            </div>
+            <div class="single-chart">
+                <div class="chart-title">MTPS 趋势（0-25）</div>
+                <div class="chart-container">
+                    <canvas class="chart-canvas" id="mtpsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右上角当前时间 -->
+    <div class="current-time" id="currentTime"></div>
+
+    <!-- 核心内容容器 -->
+    <div class="container">
+        <h2 style="text-align: center; color: var(--text-dark); margin-bottom: 8px;">FCI_WebUI</h2>
+        <div class="module">
+            <h3>即时指令执行</h3>
+            <div class="cmd-input-group">
+                <input type="text" id="cmdInput" placeholder="输入指令（无需/）">
+                <button id="sendBtn" class="btn btn-primary">执行指令</button>
+            </div>
+            <div id="logArea"></div>
+        </div>
+        <div class="module">
+            <h3>计时触发器</h3>
+            <div class="timer-form">
+                <input type="datetime-local" id="timerTime" placeholder="选择执行时间">
+                <input type="text" id="timerCmd" placeholder="输入定时执行的指令">
+                <button id="addTimerBtn" class="btn btn-primary">添加定时任务</button>
+            </div>
+
+            <!-- 批量操作栏 -->
+            <div class="batch-operation-bar">
+                <div class="batch-select-all">
+                    <input type="checkbox" id="selectAllTasks" class="batch-select-all-checkbox">
+                    <label for="selectAllTasks">全选</label>
+                </div>
+                <button id="batchDeleteBtn" class="batch-btn batch-delete-btn">批量删除选中任务</button>
+            </div>
+
+            <ul class="timer-list" id="timerList"></ul>
+        </div>
+    </div>
+
+    <!-- 右下角通知容器 -->
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <script>
+        // 全局变量：定时任务
+        let timerTasks = JSON.parse(localStorage.getItem('fciTimerTasks')) || [];
+        const logArea = document.getElementById('logArea');
+
+        // 可视化图表相关变量（核心优化：5分钟=300秒）
+        let chartContexts = {
+            fps: null,
+            ping: null,
+            tps: null,
+            mtps: null
+        };
+        let chartCanvases = {
+            fps: null,
+            ping: null,
+            tps: null,
+            mtps: null
+        };
+        let statusHistory = {
+            fps: [],
+            ping: [],
+            tps: [],
+            mtps: []
+        };
+        const MAX_HISTORY_LENGTH = 300; // 核心优化：从60改为300（5分钟，1秒1个数据点）
+        const AXIS_PADDING = 30; // 坐标轴内边距（留出显示刻度值的空间）
+        const X_AXIS_TICK_INTERVAL = 60; // X轴刻度间隔（60秒，5分钟共5个刻度）
+        const Y_AXIS_TICK_COUNT = 5; // Y轴刻度数量（5个，均分取值范围）
+
+        // 左侧面板相关变量
+        const clientPanel = document.getElementById('clientStatusPanel');
+        const resizeHandle = document.getElementById('panelResizeHandle');
+        let isResizing = false;
+
+        // 获取CSS变量辅助函数
+        function getCssVar(varName) {
+            return getComputedStyle(document.documentElement).getPropertyValue(varName);
+        }
+
+        // ========== 核心优化1：左侧面板拖动调节宽度 ==========
+        function initPanelResize() {
+            // 鼠标按下开始拖动
+            resizeHandle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none'; // 禁止选中文本
+            });
+
+            // 鼠标移动调节宽度
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+
+                // 计算新宽度（限制最小/最大值）
+                const minWidth = parseInt(getCssVar('--panel-min-width'));
+                const maxWidth = parseInt(getCssVar('--panel-max-width'));
+                let newWidth = e.clientX;
+
+                if (newWidth < minWidth) newWidth = minWidth;
+                if (newWidth > maxWidth) newWidth = maxWidth;
+
+                // 更新面板宽度和body边距
+                clientPanel.style.width = `${newWidth}px`;
+                document.body.style.marginLeft = `${newWidth}px`;
+
+                // 重绘图表（适配新宽度）
+                resizeAllCharts();
+            });
+
+            // 鼠标松开结束拖动
+            document.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    document.body.style.cursor = 'default';
+                    document.body.style.userSelect = 'auto';
+                }
+            });
+        }
+
+        // ========== 核心优化2：图表尺寸重置（拖动/加载时适配） ==========
+        function resizeAllCharts() {
+            Object.keys(chartCanvases).forEach(key => {
+                const canvas = chartCanvases[key];
+                if (!canvas) return;
+
+                // 获取容器尺寸
+                const container = canvas.parentElement;
+                const containerWidth = container.offsetWidth;
+                const containerHeight = container.offsetHeight;
+
+                // 更新canvas尺寸（高清适配）
+                canvas.width = containerWidth * 2;
+                canvas.height = containerHeight * 2;
+                chartContexts[key].scale(2, 2);
+
+                // 重绘图表
+                const currentValue = key === 'ping'
+                    ? (statusHistory.ping[statusHistory.ping.length - 1] || 0)
+                    : (statusHistory[key][statusHistory[key].length - 1] || 0);
+                drawSingleChart(key, key === 'fps' ? '#3b82f6' : key === 'ping' ? '#ef4444' : key === 'tps' ? '#10b981' : '#8b5cf6', currentValue);
+            });
+        }
+
+        // ========== 核心优化3：绘制XY轴（含刻度线、刻度值） ==========
+        function drawAxis(key, ctx, canvas, usableWidth, usableHeight, maxValue, minValue) {
+            const canvasWidth = canvas.offsetWidth / 2;
+            const canvasHeight = canvas.offsetHeight / 2;
+            const textColor = getCssVar('--text-light');
+            ctx.fillStyle = textColor;
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // 1. 绘制Y轴（左侧，数值轴）
+            const yTickStep = (maxValue - minValue) / (Y_AXIS_TICK_COUNT - 1);
+            for (let i = 0; i < Y_AXIS_TICK_COUNT; i++) {
+                const yValue = minValue + (yTickStep * i);
+                const yPos = canvasHeight - AXIS_PADDING - (i * (usableHeight / (Y_AXIS_TICK_COUNT - 1)));
+
+                // 绘制Y轴刻度线
+                ctx.beginPath();
+                ctx.strokeStyle = getCssVar('--border');
+                ctx.lineWidth = 0.5;
+                ctx.moveTo(AXIS_PADDING, yPos);
+                ctx.lineTo(canvasWidth - 5, yPos); // 横向刻度线延伸至右侧
+                ctx.stroke();
+
+                // 绘制Y轴刻度值（左侧）
+                ctx.textAlign = 'right';
+                ctx.fillText(yValue.toFixed(0), AXIS_PADDING - 5, yPos);
+            }
+
+            // 绘制Y轴轴线
+            ctx.beginPath();
+            ctx.strokeStyle = getCssVar('--text-dark');
+            ctx.lineWidth = 1;
+            ctx.moveTo(AXIS_PADDING, AXIS_PADDING);
+            ctx.lineTo(AXIS_PADDING, canvasHeight - AXIS_PADDING);
+            ctx.stroke();
+
+            // 2. 绘制X轴（底部，时间轴：0s - 300s）
+            const xTickCount = Math.ceil(MAX_HISTORY_LENGTH / X_AXIS_TICK_INTERVAL);
+            for (let i = 0; i <= xTickCount; i++) {
+                const xValue = i * X_AXIS_TICK_INTERVAL;
+                const xPos = AXIS_PADDING + (i * (usableWidth / xTickCount));
+
+                // 绘制X轴刻度线
+                ctx.beginPath();
+                ctx.strokeStyle = getCssVar('--border');
+                ctx.lineWidth = 0.5;
+                ctx.moveTo(xPos, canvasHeight - AXIS_PADDING);
+                ctx.lineTo(xPos, AXIS_PADDING); // 纵向刻度线延伸至顶部
+                ctx.stroke();
+
+                // 绘制X轴刻度值（底部，格式化显示：60s → 1min）
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                const xLabel = xValue === 0 ? '0s' : `${xValue / 60}min`;
+                ctx.fillText(xLabel, xPos, canvasHeight - AXIS_PADDING + 5);
+            }
+
+            // 绘制X轴轴线
+            ctx.beginPath();
+            ctx.strokeStyle = getCssVar('--text-dark');
+            ctx.lineWidth = 1;
+            ctx.moveTo(AXIS_PADDING, canvasHeight - AXIS_PADDING);
+            ctx.lineTo(canvasWidth - AXIS_PADDING, canvasHeight - AXIS_PADDING);
+            ctx.stroke();
+        }
+
+        // ========== 右下角弹出通知功能 ==========
+        function showNotification(message, type = 'info') {
+            const validTypes = ['success', 'error', 'info'];
+            if (!validTypes.includes(type)) type = 'info';
+
+            const notificationContainer = document.getElementById('notificationContainer');
+            const notificationItem = document.createElement('div');
+            const closeBtn = document.createElement('button');
+
+            notificationItem.className = `notification-item ${type}`;
+            notificationItem.textContent = message;
+            closeBtn.className = 'notification-close';
+            closeBtn.textContent = '×';
+
+            notificationItem.appendChild(closeBtn);
+            notificationContainer.appendChild(notificationItem);
+
+            setTimeout(() => {
+                notificationItem.classList.add('show');
+            }, 10);
+
+            const autoCloseTimer = setTimeout(() => {
+                hideNotification(notificationItem);
+            }, 3000);
+
+            closeBtn.addEventListener('click', () => {
+                clearTimeout(autoCloseTimer);
+                hideNotification(notificationItem);
+            });
+        }
+
+        function hideNotification(notificationItem) {
+            notificationItem.classList.remove('show');
+            setTimeout(() => {
+                notificationItem.remove();
+            }, 300);
+        }
+
+        // ========== 单个删除 - 二次点击确认逻辑 ==========
+        function bindSingleDeleteEvent() {
+            const singleDeleteBtns = document.querySelectorAll('.delete-single-task');
+            singleDeleteBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const taskId = this.dataset.taskId;
+                    const isConfirmPending = this.classList.contains('confirm-pending');
+
+                    if (!isConfirmPending) {
+                        this.classList.add('confirm-pending');
+                        this.textContent = '再次点击确认删除';
+                        this.title = '再次点击即可删除该任务';
+
+                        setTimeout(() => {
+                            if (this.classList.contains('confirm-pending')) {
+                                this.classList.remove('confirm-pending');
+                                this.textContent = '删除';
+                                this.title = '';
+                            }
+                        }, 5000);
+                        return;
+                    }
+
+                    const taskIndex = timerTasks.findIndex(t => t.id === taskId);
+                    if (taskIndex === -1) {
+                        showNotification('未找到该定时任务', 'error');
+                        this.classList.remove('confirm-pending');
+                        this.textContent = '删除';
+                        this.title = '';
+                        return;
+                    }
+
+                    clearTimeout(timerTasks[taskIndex].timerId);
+                    timerTasks.splice(taskIndex, 1);
+                    saveTimerTasks();
+                    renderTimerList();
+                    document.getElementById('selectAllTasks').checked = false;
+
+                    showNotification('定时任务已成功删除', 'success');
+                });
+            });
+        }
+
+        // ========== 批量删除 - 二次点击确认逻辑 ==========
+        function bindBatchDeleteEvent() {
+            const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+            const timerList = document.getElementById('timerList');
+
+            batchDeleteBtn.addEventListener('click', function() {
+                const selectedCheckboxes = timerList.querySelectorAll('.timer-item-select:checked');
+                const isConfirmPending = this.classList.contains('confirm-pending');
+
+                if (!isConfirmPending) {
+                    if (selectedCheckboxes.length === 0) {
+                        showNotification('请先选中要删除的任务', 'info');
+                        return;
+                    }
+
+                    this.classList.add('confirm-pending');
+                    this.textContent = `再次点击确认删除（${selectedCheckboxes.length}个）`;
+                    this.title = '再次点击即可批量删除选中任务';
+
+                    setTimeout(() => {
+                        if (this.classList.contains('confirm-pending')) {
+                            this.classList.remove('confirm-pending');
+                            this.textContent = '批量删除选中任务';
+                            this.title = '';
+                        }
+                    }, 5000);
+                    return;
+                }
+
+                const selectedTaskIds = Array.from(selectedCheckboxes).map(checkbox => checkbox.dataset.taskId);
+                selectedTaskIds.forEach(taskId => {
+                    const task = timerTasks.find(t => t.id === taskId);
+                    if (task && task.timerId) {
+                        clearTimeout(task.timerId);
+                    }
+                });
+
+                timerTasks = timerTasks.filter(task => !selectedTaskIds.includes(task.id));
+                saveTimerTasks();
+                renderTimerList();
+                document.getElementById('selectAllTasks').checked = false;
+                this.classList.remove('confirm-pending');
+                this.textContent = '批量删除选中任务';
+                this.title = '';
+
+                showNotification(`已成功删除 ${selectedCheckboxes.length} 个定时任务`, 'success');
+            });
+        }
+
+        // ========== 定时任务 - 回车添加功能 ==========
+        function bindTimerInputEnterEvent() {
+            const timerTime = document.getElementById('timerTime');
+            const timerCmd = document.getElementById('timerCmd');
+            const addTimerBtn = document.getElementById('addTimerBtn');
+
+            timerCmd.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && timerTime.value && timerCmd.value.trim()) {
+                    addTimerBtn.click();
+                }
+            });
+
+            timerTime.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && timerTime.value && timerCmd.value.trim()) {
+                    addTimerBtn.click();
+                }
+            });
+        }
+
+        // ========== 全选/取消全选 ==========
+        function bindSelectAllEvent() {
+            const selectAllCheckbox = document.getElementById('selectAllTasks');
+            const timerList = document.getElementById('timerList');
+
+            selectAllCheckbox.addEventListener('change', (e) => {
+                const allTaskCheckboxes = timerList.querySelectorAll('.timer-item-select');
+                allTaskCheckboxes.forEach(checkbox => {
+                    checkbox.checked = e.target.checked;
+                });
+
+                const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+                batchDeleteBtn.classList.remove('confirm-pending');
+                batchDeleteBtn.textContent = '批量删除选中任务';
+            });
+        }
+
+        // ========== 核心优化4：初始化4张独立图表（适配高度+XY轴） ==========
+        function initAllCharts() {
+            // 获取canvas元素
+            chartCanvases.fps = document.getElementById('fpsChart');
+            chartCanvases.ping = document.getElementById('pingChart');
+            chartCanvases.tps = document.getElementById('tpsChart');
+            chartCanvases.mtps = document.getElementById('mtpsChart');
+
+            // 初始化每个图表的上下文并设置高清适配
+            Object.keys(chartCanvases).forEach(key => {
+                const canvas = chartCanvases[key];
+                if (!canvas) return;
+                chartContexts[key] = canvas.getContext('2d');
+                // 初始尺寸适配
+                resizeAllCharts();
+            });
+        }
+
+        async function fetchClientStatus() {
+            try {
+                const response = await fetch('/api/status', {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!response.ok) throw new Error(`状态获取失败：${response.status}`);
+                const status = await response.json();
+                return status;
+            } catch (e) {
+                console.error('获取客户端状态异常：', e);
+                showNotification('客户端状态获取失败', 'error');
+                return { fps: 0.0, ping: 0, tps: 0.0, mtps: 0.0 };
+            }
+        }
+
+        async function updateClientStatus() {
+            const status = await fetchClientStatus();
+            // 更新文本显示
+            document.getElementById('fpsValue').textContent = status.fps.toFixed(1);
+            document.getElementById('pingValue').textContent = `${status.ping} ms`;
+            document.getElementById('tpsValue').textContent = status.tps.toFixed(1);
+            document.getElementById('mtpsValue').textContent = status.mtps.toFixed(1);
+
+            // 更新历史数据
+            updateStatusHistory(status);
+
+            // 绘制4张独立图表
+            drawSingleChart('fps', '#3b82f6', status.fps);
+            drawSingleChart('ping', '#ef4444', status.ping);
+            drawSingleChart('tps', '#10b981', status.tps);
+            drawSingleChart('mtps', '#8b5cf6', status.mtps);
+        }
+
+        function updateStatusHistory(status) {
+            statusHistory.fps.push(status.fps);
+            statusHistory.ping.push(status.ping);
+            statusHistory.tps.push(status.tps);
+            statusHistory.mtps.push(status.mtps);
+
+            // 限制历史数据长度（5分钟=300条）
+            Object.keys(statusHistory).forEach(key => {
+                if (statusHistory[key].length > MAX_HISTORY_LENGTH) {
+                    statusHistory[key].shift();
+                }
+            });
+        }
+
+        // ========== 核心优化5：绘制单张独立图表（含XY轴+5分钟数据） ==========
+        function drawSingleChart(key, color, currentValue) {
+            const ctx = chartContexts[key];
+            const canvas = chartCanvases[key];
+            if (!ctx || !canvas) return;
+
+            const canvasWidth = canvas.offsetWidth / 2;
+            const canvasHeight = canvas.offsetHeight / 2;
+            const usableWidth = canvasWidth - (AXIS_PADDING * 2);
+            const usableHeight = canvasHeight - (AXIS_PADDING * 2);
+            const data = statusHistory[key];
+
+            // 1. 清空画布
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+            // 2. 确定Y轴取值范围
+            let maxValue, minValue;
+            if (key === 'ping') {
+                maxValue = 100;
+                minValue = 0;
+            } else {
+                maxValue = 25;
+                minValue = 0;
+            }
+
+            // 3. 绘制XY轴（含刻度）
+            drawAxis(key, ctx, canvas, usableWidth, usableHeight, maxValue, minValue);
+
+            // 4. 绘制数据折线与填充（仅当数据长度≥2时）
+            if (data.length < 2) return;
+            const valueRange = maxValue - minValue;
+
+            // 绘制填充区域
+            ctx.fillStyle = `${color}20`;
+            ctx.beginPath();
+            ctx.moveTo(AXIS_PADDING, canvasHeight - AXIS_PADDING);
+            data.forEach((value, index) => {
+                const x = AXIS_PADDING + (usableWidth / (MAX_HISTORY_LENGTH - 1)) * index;
+                const y = canvasHeight - AXIS_PADDING - ((value - minValue) / valueRange) * usableHeight;
+                if (index === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.lineTo(AXIS_PADDING + (usableWidth / (MAX_HISTORY_LENGTH - 1)) * (data.length - 1), canvasHeight - AXIS_PADDING);
+            ctx.fill();
+
+            // 绘制数据折线
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            data.forEach((value, index) => {
+                const x = AXIS_PADDING + (usableWidth / (MAX_HISTORY_LENGTH - 1)) * index;
+                const y = canvasHeight - AXIS_PADDING - ((value - minValue) / valueRange) * usableHeight;
+                if (index === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // 绘制当前值标记
+            ctx.fillStyle = color;
+            const lastX = AXIS_PADDING + (usableWidth / (MAX_HISTORY_LENGTH - 1)) * (data.length - 1);
+            const lastY = canvasHeight - AXIS_PADDING - ((currentValue - minValue) / valueRange) * usableHeight;
+            ctx.beginPath();
+            ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // ========== 执行指令核心函数 ==========
+        async function executeCommand(cmd) {
+            try {
+                const encodedCmd = encodeURIComponent(cmd);
+                const url = `/api/cmd?command=${encodedCmd}`;
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP 错误：${response.status} ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                return { success: result.success || false, message: result.message || '未知响应' };
+            } catch (e) {
+                console.error('执行指令请求失败：', e);
+                return { success: false, message: '请求失败：' + e.message };
+            }
+        }
+
+        // ========== 定时任务核心功能 ==========
+        function setDefaultDateTime() {
+            const timerTimeElement = document.getElementById('timerTime');
+            if (!timerTimeElement) return;
+
+            const now = new Date();
+            now.setSeconds(now.getSeconds() + 10);
+
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+
+            const formatted = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+            timerTimeElement.value = formatted;
+        }
+
+        function bindAddTimerBtnEvent() {
+            const addTimerBtn = document.getElementById('addTimerBtn');
+            const timerTime = document.getElementById('timerTime');
+            const timerCmd = document.getElementById('timerCmd');
+            if (!addTimerBtn || !timerTime || !timerCmd) return;
+
+            addTimerBtn.onclick = () => {
+                const execTime = timerTime.value;
+                const cmd = timerCmd.value.trim();
+
+                if (!execTime) {
+                    showNotification('请选择执行时间', 'info');
+                    return;
+                }
+                if (!cmd) {
+                    showNotification('定时指令不能为空', 'info');
+                    return;
+                }
+
+                const execTimeObj = new Date(execTime);
+                const now = new Date();
+
+                if (execTimeObj <= now) {
+                    showNotification('执行时间不能早于当前时间', 'error');
+                    return;
+                }
+
+                const taskId = Date.now().toString();
+                const task = {
+                    id: taskId,
+                    execTime: execTime,
+                    cmd: cmd,
+                    status: 'pending',
+                    timerId: null
+                };
+
+                const delay = execTimeObj - now;
+                task.timerId = setTimeout(async () => {
+                    const result = await executeCommand(cmd);
+                    addLog(cmd, result, '定时执行');
+                    showNotification(`定时指令执行${result.success ? '成功' : '失败'}`, result.success ? 'success' : 'error');
+                    updateTaskStatus(taskId, 'executed');
+                }, delay);
+
+                timerTasks.push(task);
+                saveTimerTasks();
+                renderTimerList();
+                timerTime.value = '';
+                timerCmd.value = '';
+                setDefaultDateTime();
+
+                showNotification('定时任务添加成功', 'success');
+            };
+        }
+
+        function renderTimerList() {
+            const timerList = document.getElementById('timerList');
+            if (!timerList) return;
+            timerList.innerHTML = '';
+
+            if (timerTasks.length === 0) {
+                timerList.innerHTML = '<li style="text-align: center; color: var(--text-light); padding: 20px;">暂无定时任务</li>';
+                return;
+            }
+
+            timerTasks.forEach(task => {
+                const li = document.createElement('li');
+                li.className = 'timer-item';
+                li.dataset.taskId = task.id;
+
+                let countdownText = '';
+                if (task.status === 'pending') {
+                    const execTimeObj = new Date(task.execTime);
+                    const now = new Date();
+                    const remaining = execTimeObj - now;
+
+                    if (remaining > 0) {
+                        const hours = Math.floor(remaining / (1000 * 60 * 60));
+                        const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+                        const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+                        countdownText = `[剩余: ${hours>0 ? hours+'小时' : ''}${minutes>0 ? minutes+'分' : ''}${seconds}秒]`;
+                    } else {
+                        countdownText = '[即将执行]';
+                    }
+                }
+
+                const statusClass = task.status === 'pending' ? 'status-pending' : 'status-executed';
+                const statusText = task.status === 'pending' ? '待执行' : '已执行';
+                const deleteBtnHtml = task.status === 'pending'
+                    ? `<button class="btn btn-danger delete-single-task" data-task-id="${task.id}">删除</button>`
+                    : '';
+
+                li.innerHTML = `
+                    <input type="checkbox" class="timer-item-select" data-task-id="${task.id}">
+                    <div class="timer-info">
+                        指令：${task.cmd} ${countdownText}
+                        <span class="timer-status ${statusClass}">${statusText}</span>
+                        <br>
+                        执行时间：${formatDateTime(task.execTime)}
+                    </div>
+                    ${deleteBtnHtml}
+                `;
+
+                timerList.appendChild(li);
+            });
+
+            bindSingleDeleteEvent();
+            if (timerTasks.some(t => t.status === 'pending')) {
+                setTimeout(renderTimerList, 1000);
+            }
+        }
+
+        function updateTaskStatus(taskId, status) {
+            const task = timerTasks.find(t => t.id === taskId);
+            if (task) {
+                task.status = status;
+                saveTimerTasks();
+                renderTimerList();
+            }
+        }
+
+        function saveTimerTasks() {
+            const tasksToSave = timerTasks.map(task => ({
+                id: task.id,
+                execTime: task.execTime,
+                cmd: task.cmd,
+                status: task.status,
+                timerId: task.timerId
+            }));
+            localStorage.setItem('fciTimerTasks', JSON.stringify(tasksToSave));
+        }
+
+        // ========== 原有辅助功能 ==========
+        function updateCurrentTime() {
+            const now = new Date();
+            const timeElement = document.getElementById('currentTime');
+            if (timeElement) {
+                timeElement.textContent = now.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            }
+        }
+
+        function bindSendBtnEvent() {
+            const sendBtn = document.getElementById('sendBtn');
+            const cmdInput = document.getElementById('cmdInput');
+            if (!sendBtn || !cmdInput) return;
+
+            sendBtn.onclick = async () => {
+                const cmd = cmdInput.value.trim();
+                if (!cmd) {
+                    showNotification('指令不能为空', 'info');
+                    return;
+                }
+                const result = await executeCommand(cmd);
+                addLog(cmd, result);
+                showNotification(`指令执行${result.success ? '成功' : '失败'}：${result.message}`, result.success ? 'success' : 'error');
+                cmdInput.value = '';
+            };
+
+            cmdInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && cmdInput.value.trim()) {
+                    sendBtn.click();
+                }
+            });
+        }
+
+        function addLog(cmd, result, type = '即时执行') {
+            if (!logArea) return;
+            const time = new Date().toLocaleTimeString();
+            const logMsg = `[${time}] ${type} | 指令：${cmd} | <span class="log-${result.success ? 'success' : 'fail'}">${result.success ? '成功' : '失败'}</span>：${result.message}`;
+            logArea.innerHTML += logMsg + '<br>';
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function formatDateTime(datetimeStr) {
+            const date = new Date(datetimeStr);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        // ========== 页面初始化入口 ==========
+        function initPage() {
+            // 1. 初始化面板拖动
+            initPanelResize();
+
+            // 2. 初始化图表
+            initAllCharts();
+
+            // 3. 绑定各类事件
+            bindSendBtnEvent();
+            bindAddTimerBtnEvent();
+            bindTimerInputEnterEvent();
+            bindSelectAllEvent();
+            bindBatchDeleteEvent();
+
+            // 4. 初始化默认值
+            setDefaultDateTime();
+            renderTimerList();
+
+            // 5. 初始更新数据
+            updateCurrentTime();
+            updateClientStatus();
+
+            // 6. 启动定时刷新
+            setInterval(updateCurrentTime, 1000);
+            setInterval(updateClientStatus, 1000);
+
+            console.log('WebUI 初始化完成，所有功能已启动');
+        }
+
+        // 页面加载完成后恢复定时任务并初始化
+        window.onload = () => {
+            // 重新为待执行任务设置定时器
+            timerTasks = timerTasks.map(task => {
+                if (task.status === 'pending') {
+                    const execTimeObj = new Date(task.execTime);
+                    const now = new Date();
+                    const delay = execTimeObj - now;
+
+                    if (delay > 0) {
+                        task.timerId = setTimeout(async () => {
+                            const result = await executeCommand(task.cmd);
+                            addLog(task.cmd, result, '定时执行');
+                            showNotification(`定时指令执行${result.success ? '成功' : '失败'}`, result.success ? 'success' : 'error');
+                            updateTaskStatus(task.id, 'executed');
+                        }, delay);
+                    } else {
+                        task.status = 'executed';
+                    }
+                }
+                return task;
+            });
+
+            saveTimerTasks();
+            // 调用全局初始化入口
+            initPage();
+        };
+
+        // 页面关闭前清除定时器
+        window.onbeforeunload = () => {
+            timerTasks.forEach(task => {
+                if (task.timerId) clearTimeout(task.timerId);
+            });
+        };
+    </script>
+</body>
+</html>
