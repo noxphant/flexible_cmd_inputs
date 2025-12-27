@@ -27,7 +27,7 @@ public class CommandInputWindow extends JFrame {
     }
 
     // 私有化构造方法，仅通过createAndShowWindow创建
-    private CommandInputWindow() {
+    CommandInputWindow() {
         // 窗口核心配置
         setTitle("灵活指令输入 - F6窗口");
         setSize(400, 100);
