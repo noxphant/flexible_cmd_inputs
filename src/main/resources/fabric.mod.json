@@ -3,10 +3,11 @@
 	"id": "flexible-command-inputs",
 	"version": "${version}",
 	"name": "Flexible Command Inputs",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "Flexible Command Inputs!",
 	"authors": [
-		"Me!"
-	],
+		"Noxphant",
+		"Wyatt"
+    ],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
 		"sources": "https://github.com/FabricMC/fabric-example-mod"
@@ -15,20 +16,10 @@
 	"icon": "assets/flexible-command-inputs/icon.png",
 	"environment": "*",
 	"entrypoints": {
-		"main": [
-			"top.wyatt.FlexibleCommandInputs"
-		],
-		"client": [
-			"top.wyatt.FlexibleCommandInputsClient"
-		]
-	},
-	"mixins": [
-		"flexible-command-inputs.mixins.json",
-		{
-			"config": "flexible-command-inputs.client.mixins.json",
-			"environment": "client"
-		}
-	],
+      "client": [
+        "top.wyatt.flexible_cmd_inputs.FlexibleCommandInputs"
+      ]
+    },
 	"depends": {
 		"fabricloader": ">=0.18.4",
 		"minecraft": "~1.20.1",
