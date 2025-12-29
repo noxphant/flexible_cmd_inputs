@@ -28,32 +28,23 @@ import java.util.concurrent.atomic.AtomicLong;
 public class FlexibleCommandInputs implements ClientModInitializer {
     public static final String MOD_ID = "flexible_cmd_inputs";
     public static final Logger LOGGER = LogManager.getLogger(MOD_ID);
-    private static int WEB_SERVER_PORT = 8080; // 非final，支持动态修改
-    private static HttpServer httpServer = null; // 保存服务器实例，用于重启
+    private static int WEB_SERVER_PORT = 8080;
+    private static HttpServer httpServer = null; // http服务端实例
 
-    // 客户端状态统计相关变量
     private static final AtomicLong TICK_COUNT = new AtomicLong(0);
     private static long LAST_TICK_TIME = System.currentTimeMillis();
     private static double CLIENT_TPS = 20.0;
     private static double CLIENT_MTPS = 20.0;
 
-    // ========== 模组初始化 ==========
     @Override
     public void onInitializeClient() {
-        // 1. 初始化日志监听器
         try {
             LogListener.init();
         } catch (Exception e) {
             LOGGER.warn("日志监听器初始化失败，不影响WebUI功能", e);
         }
-
-        // 2. 注册客户端指令（/fci setport / /fci getport）
         registerClientCommands();
-
-        // 3. 启动WebUI服务
         startWebUIServer(WEB_SERVER_PORT);
-
-        // 4. 初始化客户端TPS/MTPS统计（改用Fabric ClientTickEvents，修正核心）
         initClientTickStats();
 
         LOGGER.info("FlexibleCmdInputs 初始化完成! WebUI地址：http://localhost:{}", WEB_SERVER_PORT);
@@ -76,7 +67,6 @@ public class FlexibleCommandInputs implements ClientModInitializer {
         });
     }
 
-    // 执行 /fci getport 指令
     private int executeGetPort(CommandContext<FabricClientCommandSource> context) {
         FabricClientCommandSource source = context.getSource();
         // 向玩家发送当前端口信息
@@ -86,24 +76,20 @@ public class FlexibleCommandInputs implements ClientModInitializer {
         return 1; // 指令执行成功返回1
     }
 
-    // 执行 /fci setport <port> 指令
     private int executeSetPort(CommandContext<FabricClientCommandSource> context) throws CommandSyntaxException {
         FabricClientCommandSource source = context.getSource();
         int newPort = IntegerArgumentType.getInteger(context, "port");
 
         if (newPort == WEB_SERVER_PORT) {
-            source.sendFeedback(Text.literal("[FCI] 新端口与当前端口一致，无需修改！"));
+            source.sendFeedback(Text.literal("[FCI] 新端口与当前端口一致！"));
             return 1;
         }
 
-        // 停止旧服务器（若存在）
         stopOldWebServer();
 
-        // 更新端口并启动新服务器
         WEB_SERVER_PORT = newPort;
         startWebUIServer(WEB_SERVER_PORT);
 
-        // 向玩家发送修改成功提示
         source.sendFeedback(Text.literal(String.format("[FCI] 端口已修改为：%d，WebUI服务已重启（访问地址：http://localhost:%d）",
                 WEB_SERVER_PORT, WEB_SERVER_PORT)));
         LogStorage.addLog(String.format("WebUI端口已修改为：%d，服务已重启", WEB_SERVER_PORT));
@@ -111,14 +97,11 @@ public class FlexibleCommandInputs implements ClientModInitializer {
         return 1;
     }
 
-    // ========== WebUI服务（支持动态端口重启） ==========
     private void startWebUIServer(int port) {
         try {
-            // 创建新的HttpServer实例
             httpServer = HttpServer.create(new InetSocketAddress(port), 0);
             LOGGER.info("正在初始化WebUI服务，绑定端口：{}", port);
 
-            // 1. 根路径：返回独立WebUI页面
             httpServer.createContext("/", exchange -> {
                 exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
                 exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
@@ -149,14 +132,12 @@ public class FlexibleCommandInputs implements ClientModInitializer {
                 exchange.close();
             });
 
-            // 2. API：执行指令
             httpServer.createContext("/api/cmd", exchange -> {
-            // 设置响应头（跨域+JSON）
+
             exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
             exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
 
             try {
-                // 补充：仅支持 POST 请求
                 if (!"POST".equals(exchange.getRequestMethod())) {
                     sendJsonResponse(exchange, 405, new Result(false, "仅支持 POST 请求"));
                     return;
@@ -186,7 +167,6 @@ public class FlexibleCommandInputs implements ClientModInitializer {
             }
         });
 
-            // 3. 新增API：获取客户端状态（FPS、Ping、TPS/MTPS）
             httpServer.createContext("/api/status", exchange -> {
                 exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
                 exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
@@ -210,7 +190,6 @@ public class FlexibleCommandInputs implements ClientModInitializer {
                 }
             });
 
-            // 启动新服务器
             httpServer.setExecutor(null);
             httpServer.start();
             LOGGER.info("WebUI服务已成功启动：http://localhost:{}", port);
@@ -220,37 +199,32 @@ public class FlexibleCommandInputs implements ClientModInitializer {
         }
     }
 
-    // 停止旧的Web服务器
     private void stopOldWebServer() {
         if (httpServer != null) {
             LOGGER.info("正在停止旧的WebUI服务（端口：{}）", WEB_SERVER_PORT);
-            httpServer.stop(1); // 1秒后停止，允许未完成的请求结束
+            httpServer.stop(1);
             httpServer = null;
         }
     }
 
-    // ========== 客户端状态统计（核心修正：改用Fabric ClientTickEvents） ==========
     private void initClientTickStats() {
-        // 1. 注册客户端每帧Tick事件（递增Tick计数，主线程安全）
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            TICK_COUNT.incrementAndGet(); // 每帧执行一次，递增Tick数
+            TICK_COUNT.incrementAndGet();
         });
 
-        // 2. 启动后台线程，每秒统计一次TPS/MTPS（保持原有逻辑，仅移除无效递归）
         new Thread(() -> {
             while (!Thread.currentThread().isInterrupted()) {
                 try {
-                    Thread.sleep(1000); // 每秒统计一次
+                    Thread.sleep(1000);
                     long currentTime = System.currentTimeMillis();
                     long tickDelta = currentTime - LAST_TICK_TIME;
                     LAST_TICK_TIME = currentTime;
 
-                    // 计算TPS（客户端每秒Tick数，理想20）
                     double tps = (double) TICK_COUNT.get() / (tickDelta / 1000.0);
-                    CLIENT_TPS = Math.min(20.0, tps); // 限制最大值为20，避免异常值
-                    CLIENT_MTPS = Math.min(20.0, CLIENT_TPS); // MTPS简化为与TPS一致（客户端单线程）
+                    CLIENT_TPS = Math.min(20.0, tps);
+                    CLIENT_MTPS = Math.min(20.0, CLIENT_TPS);
 
-                    TICK_COUNT.set(0); // 重置Tick计数，准备下一秒统计
+                    TICK_COUNT.set(0);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     LOGGER.warn("TPS统计线程被中断", e);
@@ -259,15 +233,12 @@ public class FlexibleCommandInputs implements ClientModInitializer {
         }).start();
     }
 
-    // 获取当前客户端状态
     private ClientStatus getCurrentClientStatus() {
         MinecraftClient client = MinecraftClient.getInstance();
         ClientStatus status = new ClientStatus();
 
-        // 1. FPS（客户端当前帧率，MinecraftClient内置方法，1.20.1支持）
         status.fps = client.getCurrentFps();
 
-        // 2. Ping（单人世界0，多人世界获取延迟）
         if (client.isInSingleplayer() || client.getNetworkHandler() == null || client.player == null) {
             status.ping = 0;
         } else {
@@ -278,14 +249,12 @@ public class FlexibleCommandInputs implements ClientModInitializer {
             }
         }
 
-        // 3. TPS/MTPS（客户端统计的每秒Tick数）
         status.tps = CLIENT_TPS;
         status.mtps = CLIENT_MTPS;
 
         return status;
     }
 
-    // 客户端状态实体类
     private static class ClientStatus {
         double fps;
         int ping;
@@ -293,7 +262,6 @@ public class FlexibleCommandInputs implements ClientModInitializer {
         double mtps;
     }
 
-    // ========== 原有工具方法（保持不变） ==========
     private String readResourceFile(String resourcePath) throws IOException {
         try (InputStream inputStream = getClass().getResourceAsStream(resourcePath);
              BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
@@ -356,7 +324,6 @@ public class FlexibleCommandInputs implements ClientModInitializer {
         }
     }
 
-    // ========== 内部实体类 ==========
     public static class Result {
         public boolean success;
         public String message;
@@ -367,7 +334,6 @@ public class FlexibleCommandInputs implements ClientModInitializer {
         }
     }
 
-    // ========== 补充缺失的辅助类 ==========
     public static class LogStorage {
         private static final StringBuilder LOG = new StringBuilder();
 
